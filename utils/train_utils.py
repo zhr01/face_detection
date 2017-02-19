@@ -10,6 +10,7 @@ import tensorflow as tf
 from data_utils import (annotation_jitter, annotation_to_h5)
 from utils.annolist import AnnotationLib as al
 from rect import Rect
+from utils.phg import compared_footprint
 
 def rescale_boxes(current_shape, anno, target_height, target_width):
     x_scale = target_width / float(current_shape[1])
@@ -97,6 +98,7 @@ def load_data_gen(H, phase, jitter):
 
 def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_len=1, min_conf=0.1, show_removed=True, tau=0.25, show_suppressed=True):
     image = np.copy(orig_image[0])
+    # bg_image = np.copy(orig_image[1])
     num_cells = H["grid_height"] * H["grid_width"]
     boxes_r = np.reshape(boxes, (-1,
                                  H["grid_height"],
@@ -110,6 +112,8 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
                                              H['num_classes']))
     cell_pix_size = H['region_size']
     all_rects = [[[] for _ in range(H["grid_width"])] for _ in range(H["grid_height"])]
+
+    # re = []
     for n in range(rnn_len):
         for y in range(H["grid_height"]):
             for x in range(H["grid_width"]):
@@ -120,6 +124,12 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
                 h = bbox[3]
                 conf = np.max(confidences_r[0, y, x, n, 1:])
                 all_rects[y][x].append(Rect(abs_cx,abs_cy,w,h,conf))
+    #             re.append([int(abs_cx-0.5*w), int(abs_cy-0.5*h), int(w), int(h), conf])
+    #
+    # image_show = image.copy()
+    # for x,y,w,h,c in re:
+    #     cv2.rectangle(image_show, (x,y),(x+w,y+h),(255,0,0),1)
+    # cv2.imwrite("raw.jpg", image_show)
 
     all_rects_r = [r for row in all_rects for cell in row for r in cell]
     if use_stitching:
@@ -128,30 +138,52 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
     else:
         acc_rects = all_rects_r
 
+    # image_show = image.copy()
+    # for rect in acc_rects:
+    #     x,y,w,h,c = int(rect.cx-rect.width*0.5),int(rect.cy-rect.height*0.5),rect.width,rect.height, rect.confidence
+    #     cv2.rectangle(image_show, (x, y), (x + w, y + h), (255, 0, 0), 1)
+    #     cv2.putText(image_show, str(c), (x, y),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+    #                 (0, 0, 255), 1)
+    # cv2.imwrite("stitch.jpg", image_show)
 
     pairs = [(acc_rects, (0, 255, 0))]
     if show_suppressed:
         pairs.append((all_rects_r, (255, 0, 0)))
+
+    picks = []
     for rect_set, color in pairs:
         for rect in rect_set:
             if rect.confidence > min_conf:
-                cv2.rectangle(image,
-                    (rect.cx-int(rect.width/2), rect.cy-int(rect.height/2)),
-                    (rect.cx+int(rect.width/2), rect.cy+int(rect.height/2)),
-                    color,
-                    2)
+                picks.append([rect.cx-int(rect.width/2), rect.cy-int(rect.height/2), rect.cx+int(rect.width/2), rect.cy+int(rect.height/2)])
+                # cv2.rectangle(image,
+                #     (rect.cx-int(rect.width/2), rect.cy-int(rect.height/2)),
+                #     (rect.cx+int(rect.width/2), rect.cy+int(rect.height/2)),
+                #     color,
+                #     2)
+    # for rect in picks:
+    #     x1, y1, x2, y2 = rect
+    #     # print(x1,y1,x2,y2)
+    #     if x1 < 0: x1 = 0
+    #     if y1 < 0: y1 = 0
+    #     img1 = image[y1:y2, x1:x2]
+    #     img2 = bg_image[y1:y2, x1:x2]
+    #     dis = compared_footprint(img1, img2)
+    #     if dis < 15: picks.remove(rect)
+    # for rect in picks:
+    #     cv2.rectangle(image, (rect[0], rect[1]), (rect[2], rect[3]), (255, 0, 0), 2)
 
-    rects = []
-    for rect in acc_rects:
-        r = al.AnnoRect()
-        r.x1 = rect.cx - rect.width/2.
-        r.x2 = rect.cx + rect.width/2.
-        r.y1 = rect.cy - rect.height/2.
-        r.y2 = rect.cy + rect.height/2.
-        r.score = rect.true_confidence
-        rects.append(r)
+    # rects = []
+    # for rect in acc_rects:
+    #     r = al.AnnoRect()
+    #     r.x1 = rect.cx - rect.width/2.
+    #     r.x2 = rect.cx + rect.width/2.
+    #     r.y1 = rect.cy - rect.height/2.
+    #     r.y2 = rect.cy + rect.height/2.
+    #     r.score = rect.true_confidence
+    #     rects.append(r)
 
-    return image, rects
+    return image, picks
 
 def to_x1y1x2y2(box):
     w = tf.maximum(box[:, 2:3], 1)
