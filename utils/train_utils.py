@@ -113,7 +113,7 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
     cell_pix_size = H['region_size']
     all_rects = [[[] for _ in range(H["grid_width"])] for _ in range(H["grid_height"])]
 
-    # re = []
+    re = []
     for n in range(rnn_len):
         for y in range(H["grid_height"]):
             for x in range(H["grid_width"]):
@@ -124,11 +124,11 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
                 h = bbox[3]
                 conf = np.max(confidences_r[0, y, x, n, 1:])
                 all_rects[y][x].append(Rect(abs_cx,abs_cy,w,h,conf))
-    #             re.append([int(abs_cx-0.5*w), int(abs_cy-0.5*h), int(w), int(h), conf])
-    #
-    # image_show = image.copy()
-    # for x,y,w,h,c in re:
-    #     cv2.rectangle(image_show, (x,y),(x+w,y+h),(255,0,0),1)
+                re.append([int(abs_cx-0.5*w), int(abs_cy-0.5*h), int(w), int(h), conf])
+
+    image_raw= image.copy()
+    for x,y,w,h,c in re:
+        cv2.rectangle(image_raw, (x,y),(x+w,y+h),(255,0,0),1)
     # cv2.imwrite("raw.jpg", image_show)
 
     all_rects_r = [r for row in all_rects for cell in row for r in cell]
@@ -138,13 +138,13 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
     else:
         acc_rects = all_rects_r
 
-    # image_show = image.copy()
-    # for rect in acc_rects:
-    #     x,y,w,h,c = int(rect.cx-rect.width*0.5),int(rect.cy-rect.height*0.5),rect.width,rect.height, rect.confidence
-    #     cv2.rectangle(image_show, (x, y), (x + w, y + h), (255, 0, 0), 1)
-    #     cv2.putText(image_show, str(c), (x, y),
-    #                 cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-    #                 (0, 0, 255), 1)
+    image_stitch = image.copy()
+    for rect in acc_rects:
+        x,y,w,h,c = int(rect.cx-rect.width*0.5),int(rect.cy-rect.height*0.5),rect.width,rect.height, rect.confidence
+        cv2.rectangle(image_stitch, (x, y), (x + w, y + h), (255, 0, 0), 1)
+        cv2.putText(image_stitch, str(c), (x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 0, 255), 1)
     # cv2.imwrite("stitch.jpg", image_show)
 
     pairs = [(acc_rects, (0, 255, 0))]
@@ -156,11 +156,11 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
         for rect in rect_set:
             if rect.confidence > min_conf:
                 picks.append([rect.cx-int(rect.width/2), rect.cy-int(rect.height/2), rect.cx+int(rect.width/2), rect.cy+int(rect.height/2)])
-                # cv2.rectangle(image,
-                #     (rect.cx-int(rect.width/2), rect.cy-int(rect.height/2)),
-                #     (rect.cx+int(rect.width/2), rect.cy+int(rect.height/2)),
-                #     color,
-                #     2)
+                cv2.rectangle(image,
+                    (rect.cx-int(rect.width/2), rect.cy-int(rect.height/2)),
+                    (rect.cx+int(rect.width/2), rect.cy+int(rect.height/2)),
+                    color,
+                    2)
     # for rect in picks:
     #     x1, y1, x2, y2 = rect
     #     # print(x1,y1,x2,y2)
@@ -183,7 +183,7 @@ def add_rectangles(H, orig_image, confidences, boxes, use_stitching=False, rnn_l
     #     r.score = rect.true_confidence
     #     rects.append(r)
 
-    return image, picks
+    return image, image_raw, image_stitch
 
 def to_x1y1x2y2(box):
     w = tf.maximum(box[:, 2:3], 1)
